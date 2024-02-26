@@ -6,4 +6,7 @@
     "bitburner.showFileWatcherEnabledNotification": true,
     "javascript.preferences.importModuleSpecifier": "non-relative",
     "explorer.excludeGitIgnore": true,
+    "cSpell.words": [
+        "tprint"
+    ],
 }

@@ -25,7 +25,7 @@ export async function main(ns) {
 
         // the time taken for certain operations
         ns.tprint(` Hack time  : ${ns.tFormat(ns.getHackTime(server))}`)
-        ns.tprint(` Grow time  : ${ns.tFormat(ns.getGrowTime(server))} (t=${Math.ceil(ns.growthAnalyze(server, maxMoney / money))})`);
+        ns.tprint(` Grow time  : ${ns.tFormat(ns.getGrowTime(server))} (t=${Math.ceil(ns.growthAnalyze(server, maxMoney / Math.max(money,1)))})`);
         ns.tprint(` Weak time  : ${ns.tFormat(ns.getWeakenTime(server))} (t=${Math.ceil(sec - minSec) * 20})`);
         ns.tprint(` Grow rate  : `,ns.getServerGrowth(server))
 

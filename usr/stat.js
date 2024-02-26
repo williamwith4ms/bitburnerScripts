@@ -44,3 +44,4 @@ export async function main(ns) {
     ns.tprint("This command requires a server as an argument")
     }
 }
+export const autocomplete = (data) => data.servers;

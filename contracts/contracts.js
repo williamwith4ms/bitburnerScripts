@@ -33,6 +33,7 @@ export async function main(ns) {
         contracts.forEach((contract) => {
             let answer = solvers[contract.type](contract.data);
             if (answer !== "Not implemented") {
+                ns.print(`Solving ${contract.type} on ${contract.server} (${contract.filename})`);
                 let result = cc.attempt(answer, contract.filename, contract.server);
                 if (result === "") ns.print(`WARN: Failed to solve, ${contract.type} on ${contract.server} (${contract.filename})`);
 

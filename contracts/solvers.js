@@ -69,6 +69,7 @@ solvers["Total Ways to Sum II"] = (data) => {
             ways[j] += ways[j - availableIntegers[i]];
         }
     }
+    return ways[n];
 }
 
 solvers["Spiralize Matrix"] = (data) => {

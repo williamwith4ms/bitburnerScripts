@@ -33,10 +33,10 @@ export async function main(ns) {
         contracts.forEach((contract) => {
             let answer = solvers[contract.type](contract.data);
             if (answer !== "Not implemented") {
-                ns.print(`Solving ${contract.type} on ${contract.server} (${contract.filename})`);
+                // ns.print(`Solving ${contract.type} on ${contract.server} (${contract.filename})`);
                 let result = cc.attempt(answer, contract.filename, contract.server);
-                if (result === "") ns.print(`WARN: Failed to solve, ${contract.type} on ${contract.server} (${contract.filename})`);
-
+                if (result === "") ns.print(`WARN: Failed to solve, ${contract.type} [${contract.data}] on ${contract.server} (${contract.filename}) [${answer}]`);
+                else ns.print(`SUCCESS: Solved ${contract.type} on ${contract.server} for ${result} (${contract.filename})`);
             }
         });
     }

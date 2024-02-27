@@ -17,13 +17,11 @@ export async function main(ns) {
         const maxRam = ns.getServerMaxRam(server);
 
         ns.print(` ---${server}---`);
-        // max ram and ram usage
-        ns.print(` RAM        : ${usedRam} / ${maxRam} (${(usedRam / maxRam * 100).toFixed(2)}%)`)
         // general server info
+        ns.print(` RAM        : ${usedRam} / ${maxRam} (${(usedRam / maxRam * 100).toFixed(2)}%)`)
         ns.print(` Level      : ${ns.getHackingLevel()} / ${ns.getServerRequiredHackingLevel(server)} (${(ns.getHackingLevel() / ns.getServerRequiredHackingLevel(server) * 100).toFixed(2)}%)`)
         ns.print(` $          : $${ns.formatNumber(money)} / $${ns.formatNumber(maxMoney)} (${(money / maxMoney * 100).toFixed(2)}%)`);
         ns.print(` Security   : +${(sec - minSec).toFixed(2)}`);
-        // the time taken for certain operations
         ns.print(` Hack time  : ${ns.tFormat(ns.getHackTime(server))}`)
         ns.print(` Grow time  : ${ns.tFormat(ns.getGrowTime(server))} (t=${Math.ceil(ns.growthAnalyze(server, maxMoney / money))})`);
         ns.print(` Weak time  : ${ns.tFormat(ns.getWeakenTime(server))} (t=${Math.ceil(sec - minSec) * 20})`);

@@ -30,7 +30,6 @@ export async function main(ns) {
             }
         }
 
-        let totalRewards = 0;
         contracts.forEach((contract) => {
             let answer = solvers[contract.type](contract.data);
             if (answer !== "Not implemented") {

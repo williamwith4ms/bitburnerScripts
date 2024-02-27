@@ -7,6 +7,30 @@
     "javascript.preferences.importModuleSpecifier": "non-relative",
     "explorer.excludeGitIgnore": true,
     "cSpell.words": [
-        "tprint"
+        "ciphertext",
+        "codingcontract",
+        "LINUXLINU",
+        "polyalphabetic",
+        "tprint",
+        "Vigenère"
+    ],
+    "cSpell.ignoreWords": [
+        "DRRURRD",
+        "Hammingcode",
+        "Hammings",
+        "Lempel",
+        "Spiralize",
+        "aaaaabccc",
+        "aaabb",
+        "aaabbaaab",
+        "aaabbaaababababa",
+        "aaabbaaababababaabb",
+        "abcdefghi",
+        "abcdefghijk",
+        "abracad",
+        "databit",
+        "paritybit",
+        "pppdpddd",
+        "pppdpdddpd"
     ],
 }

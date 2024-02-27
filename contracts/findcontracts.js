@@ -22,4 +22,5 @@ export async function main(ns) {
 	Object.keys(dict)
 		.filter((key) => dict[key] > 0)
 		.forEach((key) => ns.tprint(`${key}: ${dict[key]}`));
+
 }

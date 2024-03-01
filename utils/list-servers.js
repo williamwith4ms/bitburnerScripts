@@ -4,7 +4,7 @@ export async function main(ns) {
     let serversToScan = ns.scan("home")
 		while (serversToScan.length > 0) {
 			let server = serversToScan.shift();
-			if (!servers.includes(server) && server !== "home") {
+			if (!servers.includes(server) && server !== "home" && server !== "darkweb") {
 				servers.push(server);
 				serversToScan = serversToScan.concat(ns.scan(server));
                 let openPorts = 0;

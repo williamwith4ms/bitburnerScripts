@@ -132,11 +132,11 @@ solvers["Array Jumping Game"] = (data) => {
     let maxDistance = 0;
     for (let i = 0; i < data.length; i++) {
         if (i > maxDistance) {
-            return false;
+            return 0;
         }
         maxDistance = Math.max(maxDistance, i + data[i]);
     }
-    return true;
+    return 1;
     
 };
 

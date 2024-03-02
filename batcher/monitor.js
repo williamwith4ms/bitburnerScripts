@@ -4,7 +4,7 @@ export async function main(ns) {
 
     const logFile = "data/batcherLogs.txt";
     ns.clear(logFile);
-    let logPort = ns.getPortHandle(ns.pid());
+    let logPort = ns.getPortHandle(ns.pid);
     logPort.clear();
 
     let max = 0

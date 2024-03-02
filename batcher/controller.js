@@ -31,77 +31,81 @@ export async function main(ns) {
 	ns.disableLog("ALL");
 	ns.tail();
 	ns.clearLog();
-	let target = "n00dles";
-	let servers = JSON.parse(ns.read("/data/servers.txt"));
+	let batchCount = 0;
+	while (true) {
+		const dataPort = ns.getPortHandle(ns.pid);
+		dataPort.clear();
 
-	for (const server of servers) {
-		for (const script of scripts) {
-			ns.scp(script, server, "home");
-		}
-	}
-
+		let target = "n00dles";
+		let servers = JSON.parse(ns.read("/data/servers.txt"));
 	
-	const serverPool = new ServerPool(ns, servers);
-	const info = new Info(ns, target);
-
-	if (!isPrepped(ns, target)) {
-		ns.print(`Awaiting prep`);
-		await prep(ns, info, serverPool);
-	}
-	info.update(ns);
-	ns.print(`Prepped`);
-	ns.print(`Optimizing batch...`);
-	optimizeBatch(ns, info, serverPool);
-	info.update(ns);
-	ns.print(`Optimized`);
-	const batch = [];
-	ns.print(`Creating batch...`);
-	for (const type of TYPES) {
-		ns.print(`Creating ${type} job`);
-		info.ends[type] =
-			performance.now() + info.wTime + (info.spacer * OFFSETS[type]) + 100;
-		const job = new Job(type, info);
-		if (!serverPool.assign(job)) {
-			ns.tprint(`ERROR: Unable to assign ${type} dumping debug info`);
-			ns.tprint(job);
-			ns.tprint(info);
-			serverPool.printBlocks(ns);
-			return;
+		for (const server of servers) {
+			for (const script of scripts) {
+				ns.scp(script, server, "home");
+			}
 		}
-		batch.push(job);
-		ns.print(`Job created`);
+	
+		
+		const serverPool = new ServerPool(ns, servers);
+		const info = new Info(ns, target);
+	
+		if (!isPrepped(ns, target)) {
+			ns.print(`Awaiting prep`);
+			await prep(ns, info, serverPool);
+		}
+		info.update(ns);
+		optimizeBatch(ns, info, serverPool);
+	
+		const batch = [];
+		batchCount++;
+		for (const type of TYPES) {
+	
+			info.ends[type] =
+				performance.now() + info.wTime + (info.spacer * OFFSETS[type]);
+			const job = new Job(type, info);
+			job.batch = batchCount;
+	
+			if (!serverPool.assign(job)) {
+				ns.tprint(`ERROR: Unable to assign ${type} dumping debug info`);
+				ns.tprint(job);
+				ns.tprint(info);
+				serverPool.printBlocks(ns);
+				return;
+			}
+			batch.push(job);
+			ns.print(`Job created`);
+		}
+	
+		for (const job of batch) {
+			job.ends += info.delay;
+			const jobPID = ns.exec(
+				workers[job.type],
+				job.server,
+				{ threads: job.threads, temporary: true },
+				JSON.stringify(job)
+			);
+			if (!jobPID) throw new Error(`Unable to deploy ${job.type}`); 
+			
+			const tPort = ns.getPortHandle(jobPID);
+			await tPort.nextWrite();
+			info.delay += tPort.read();
+		}
+		ns.print(`Batch running`);
+	
+		const timer = setInterval(() => {
+			ns.clearLog();
+			ns.print(`Hacking \$${ns.formatNumber(metrics.maxMoney * metrics.greed)} from ${metrics.target}`)
+			ns.print(`Running batch: ETA ${ns.tFormat(metrics.ends.weaken2 - Date.now())}`);
+		}, 1000);
+		ns.atExit(() => {
+			clearInterval(timer);
+		});
+		// Wait for the weaken2 worker to report back. For now I've just hardcoded the Job class to tell only
+		// weaken2 to report. This behavior will change later.
+		await dataPort.nextWrite();
+		dataPort.clear(); // For now we don't actually need the information here, we're just using it for timing.
+		clearInterval(timer);
 	}
-	ns.print(`Batch created`);
-	ns.print(`Running batch...`);
-	for (const job of batch) {
-		ns.tprint(job);
-		ns.exec(
-			workers[job.type],
-			job.server,
-			{ threads: job.threads, temporary: true },
-			JSON.stringify(job)
-		);
-	}
-	ns.print(`Batch running`);
-
-	const timer = setInterval(() => {
-		ns.ui.clearTerminal();
-		ns.tprint(
-			`Hacking \$${ns.formatNumber(
-				info.maxMoney * info.sPercent
-			)} from ${info.target}`
-		);
-		ns.tprint(
-			`Running batch: ETA ${ns.tFormat(
-				info.ends.weaken2 - performance.now()
-			)}`
-		);
-	}, 1000);
-
-	ns.atExit(() => clearInterval(timer));
-	await ns.asleep(info.wTime);
-	clearInterval(timer);
-	ns.tprint(`Done!`);
 }
 
 class Job {
@@ -113,7 +117,7 @@ class Job {
 		this.threads = info.threads[type];
 		this.cost = this.threads * COSTS[type];
 		this.server = server;
-		this.report = false;
+		this.report = this.type === "weaken2";
 		this.port = info.port;
 		this.batch = 0;
 	}
@@ -129,6 +133,7 @@ class Info {
 		this.sec = ns.getServerSecurityLevel(server);
 		this.prepped = isPrepped(ns, server);
 		this.sPercent = 0.1; // the amount to hack
+		this.delay = 0;
 
 		this.wTime - ns.getWeakenTime(server);
 		this.spacer = 5;
@@ -139,7 +144,7 @@ class Info {
 		this.threads = { hack: 0, weaken1: 0, grow: 0, weaken2: 0 };
 		this.ends = { hack: 0, weaken1: 0, grow: 0, weaken2: 0 };
 
-		//this.port = ns.pid();
+		this.port = ns.pid;
 	}
 	/** @param {import("..").NS} ns */
 	update(ns, sPercent = this.sPercent) {

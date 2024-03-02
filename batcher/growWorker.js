@@ -4,8 +4,11 @@ export async function main(ns) {
 	let delay = job.ends - job.time - performance.now();
 	if (delay < 0) {
 		ns.tprint(`WARN: Batch ${job.batch} ${job.type} was ${-delay}ms too late. (${job.ends})\n`);
+		ns.writePort(ns.pid, -delay);
 		delay = 0;
-	} 
+	} else {
+		ns.writePort(ns.pid, 0);
+	}
 	await ns.grow(job.target, {additionalMsec: delay});
 	const end = performance.now();
 	ns.atExit(() => {

@@ -9,7 +9,7 @@ export async function main(ns) {
         let money = ns.getServerMoneyAvailable("home");
         let serverCost = ns.getPurchasedServerCost(ram);
         // Purchase servers if server cost * 25 < money / 10
-        if (serverCost * ns.getPurchasedServerLimit() < money / 10) {
+        if (serverCost * ns.getPurchasedServerLimit() < money / 5) {
             for (let i = 0; i < ns.getPurchasedServerLimit(); i++) {
                 let name = "pserv-" + i;
                 if (servers.includes(name)) {

@@ -1,5 +1,5 @@
 /** @param {NS} ns */
-export async function main(ns) {
+export function main(ns) {
     let servers = [];
     let serversToScan = ns.scan("home")
 		while (serversToScan.length > 0) {

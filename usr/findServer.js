@@ -9,6 +9,6 @@ export async function main(ns) {
 	// this means you can start scanning from the target server and work your way back to home
 	while (path[0] !== "home") path.unshift(ns.scan(path[0])[0]);
 	path.shift();
-	ns.tprint(`connect ${path.join(";connect ")}`);
+	ns.tprint(`\nconnect ${path.join(";connect ")}`);
 }
 export const autocomplete = (data) => data.servers;

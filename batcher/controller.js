@@ -1,15 +1,5 @@
-import { isPrepped, prep } from "batcher/utils.js";
-/* 
-
-1) Figure out the optimal size and number of batches.
-2) Schedule your entire depth into distinct queues for each job type, note that this is just the schedule, no execs have happened yet.
-3) Set the end time of the first weaken (or second for HWGW) as the initial cutoff and deploy every job with an expected start time before that cutoff#
-4) Refill the schedule
-5) Wait for that weaken to finish (nextWrite)
-6) Set the next weaken to end as the new cutoff and deploy every job with an expected start time before then
-7) Repeat from 4 forever
-
-*/
+import { isPrepped, prep,upgradeServers,findServers,bestServer } from "batcher/utils.js";
+/** @param {import("..").NS} ns */
 
 const TYPES = ["hack", "weaken1", "grow", "weaken2"];
 const COSTS = { hack: 1.7, weaken1: 1.75, grow: 1.75, weaken2: 1.75 };
@@ -27,44 +17,42 @@ const workers = {
 const OFFSETS = { hack: 0, weaken1: 1, grow: 2, weaken2: 3 };
 
 /** @param {import("..").NS} ns */
+
 export async function main(ns) {
 	ns.disableLog("ALL");
 	ns.tail();
-	ns.clearLog();
-	let batchCount = 0;
-	while (true) {
+
+	let logPort = ns.exec("/batcher/batcherLog.js","home");
+	ns.exec("/utils/list-servers.js","home");
+	/*while (true) {
 		const dataPort = ns.getPortHandle(ns.pid);
 		dataPort.clear();
 
 		let target = "n00dles";
-		let servers = JSON.parse(ns.read("/data/servers.txt"));
-	
+		let servers = findServers(ns)
+
 		for (const server of servers) {
 			for (const script of scripts) {
-				ns.scp(script, server, "home");
+				ns.scp(script, server);
 			}
 		}
-	
 		
 		const serverPool = new ServerPool(ns, servers);
 		const info = new Info(ns, target);
-	
 		if (!isPrepped(ns, target)) {
 			ns.print(`Awaiting prep`);
 			await prep(ns, info, serverPool);
 		}
 		info.update(ns);
 		optimizeBatch(ns, info, serverPool);
-	
-		const batch = [];
+		info.update(ns);
+		info.end = performance.now() + info.wTime - info.spacer;
+
+		const jobs = [];
 		batchCount++;
 		for (const type of TYPES) {
-	
-			info.ends[type] =
-				performance.now() + info.wTime + (info.spacer * OFFSETS[type]);
-			const job = new Job(type, info);
-			job.batch = batchCount;
-	
+			info.end += info.spacer;
+			const job = new Job(type, info, batchCount);
 			if (!serverPool.assign(job)) {
 				ns.tprint(`ERROR: Unable to assign ${type} dumping debug info`);
 				ns.tprint(job);
@@ -72,54 +60,151 @@ export async function main(ns) {
 				serverPool.printBlocks(ns);
 				return;
 			}
-			batch.push(job);
-			ns.print(`Job created`);
+			jobs.push(job);
 		}
-	
-		for (const job of batch) {
-			job.ends += info.delay;
+
+		for (const job of jobs) {
+			job.end += info.delay;
 			const jobPID = ns.exec(
 				workers[job.type],
 				job.server,
 				{ threads: job.threads, temporary: true },
 				JSON.stringify(job)
 			);
-			if (!jobPID) throw new Error(`Unable to deploy ${job.type}`); 
-			
+			if (!jobPID) {
+				ns.tprint(
+					`ERROR: Unable to start ${job.type} dumping debug info`
+				);
+				ns.tprint(job);
+				ns.tprint(info);
+				serverPool.printBlocks(ns);
+				throw new Error("Unable to start job");
+			}
 			const tPort = ns.getPortHandle(jobPID);
 			await tPort.nextWrite();
 			info.delay += tPort.read();
 		}
-		ns.print(`Batch running`);
-	
-		const timer = setInterval(() => {
-			ns.clearLog();
-			ns.print(`Hacking \$${ns.formatNumber(metrics.maxMoney * metrics.greed)} from ${metrics.target}`)
-			ns.print(`Running batch: ETA ${ns.tFormat(metrics.ends.weaken2 - Date.now())}`);
-		}, 1000);
+		ns.print(`Batch ${batchCount} started`);
+
+		do {
+			await dataPort.nextWrite();
+			dataPort.clear();
+			serverPool.finish(jobs.shift());
+		} while (jobs.length > 0);
+	}*/
+
+	while (true) {
+		const dataPort = ns.getPortHandle(ns.pid);
+		dataPort.clear();
+		let servers = findServers(ns);
+		// ns.tprint(`servers: ${servers}`);
+		for (const server of servers) {
+			for (const script of scripts) {
+				ns.scp(script, server);
+			}
+		}
+		let target = bestServer(ns,servers);
+		// let target = "n00dles";
+		let info = new Info(ns, target);
+		info.logPort = logPort;
+		ns.writePort(info.logPort,`INFO: Starting batcher for ${target}`);
+		let serverPool = new ServerPool(ns, servers);
+		
+		if (await upgradeServers(ns,info)) {
+			serverPool = new ServerPool(ns, servers);
+			info = new Info(ns, target);
+			info.logPort = logPort;
+		}
+
+		servers = findServers(ns)
+		if (!isPrepped(ns, target)) await prep(ns, info, serverPool);	
+		ns.clearLog();
+
+		//ns.tprint(`awaiting optimization`);
+		await optimizeShotgun(ns, info, serverPool);
+		info.update(ns);
+
+		const jobs = [];
+		let batchCount = 0;
+
+
+		info.end = performance.now() + info.wTime - info.spacer;
+
+
+		ns.writePort(info.logPort,`INFO: Creating Jobs for: ${info.depth} batches`);
+
+		while (batchCount++ < info.depth) {
+			for (const type of TYPES) {
+				info.end += info.spacer;
+
+				const job = new Job(type, info, batchCount);
+				if (!serverPool.assign(job)) {
+					ns.writePort(info.logPort,`ERROR: Unable to assign ${type}. Dumping debug info:`);
+					ns.tprint(`ERROR: Unable to assign ${type}. Dumping debug info:`);
+					ns.tprint(job);
+					ns.tprint(info);
+					serverPool.printBlocks(ns);
+					return;
+				}
+				jobs.push(job);
+			}
+		}
+
+		ns.writePort(info.logPort,`SUCCESS: Created Batches: ${batchCount - 1} batches`);
+		ns.writePort(info.logPort,`INFO: Deploying Jobs: ${jobs.length} jobs`);
+		for (const job of jobs) {
+			job.end += info.delay;
+			const jobPID = ns.exec(
+				workers[job.type],
+				job.server,
+				{ threads: job.threads, temporary: true },
+				JSON.stringify(job)
+			);
+			// ns.tprint(jobPID);
+			if (!jobPID) {
+				ns.tprint(
+					`ERROR: Unable to start ${job.type} dumping debug info`
+				);
+				ns.tprint(job);
+				ns.tprint(info);
+				serverPool.printBlocks(ns);
+				throw new Error(`Unable to start job ${job.type}`);
+			}
+			const tPort = ns.getPortHandle(jobPID);
+			await tPort.nextWrite();
+			info.delay += tPort.read();
+		}
+		ns.writePort(info.logPort,`SUCCESS: Deployed Jobs: successfully`);
+
+		jobs.reverse();
+
+		do {
+			await dataPort.nextWrite();
+			dataPort.clear();
+			serverPool.finish(jobs.pop());
+		} while (jobs.length > 0);
+
 		ns.atExit(() => {
-			clearInterval(timer);
+			ns.kill(logPort);
 		});
-		// Wait for the weaken2 worker to report back. For now I've just hardcoded the Job class to tell only
-		// weaken2 to report. This behavior will change later.
-		await dataPort.nextWrite();
-		dataPort.clear(); // For now we don't actually need the information here, we're just using it for timing.
-		clearInterval(timer);
 	}
+
 }
 
 class Job {
-	constructor(type, info, server = "none") {
+	constructor(type, info, batch) {
 		this.type = type;
-		this.ends = info.ends[type];
+		this.end = info.end;
 		this.time = info.times[type];
 		this.target = info.target;
 		this.threads = info.threads[type];
 		this.cost = this.threads * COSTS[type];
-		this.server = server;
-		this.report = this.type === "weaken2";
+		this.server = "none";
+		this.report = true;
 		this.port = info.port;
-		this.batch = 0;
+		this.batch = batch;
+		this.logPort = info.logPort;
+		this.log = true;
 	}
 }
 
@@ -134,6 +219,9 @@ class Info {
 		this.prepped = isPrepped(ns, server);
 		this.sPercent = 0.1; // the amount to hack
 		this.delay = 0;
+		this.end = 0;
+		this.depth = 0;
+		this.logPort = 0;
 
 		this.wTime - ns.getWeakenTime(server);
 		this.spacer = 5;
@@ -142,7 +230,7 @@ class Info {
 		this.times = { hack: 0, weaken1: 0, grow: 0, weaken2: 0 };
 		this.starts = { hack: 0, weaken1: 0, grow: 0, weaken2: 0 };
 		this.threads = { hack: 0, weaken1: 0, grow: 0, weaken2: 0 };
-		this.ends = { hack: 0, weaken1: 0, grow: 0, weaken2: 0 };
+		//this.ends = { hack: 0, weaken1: 0, grow: 0, weaken2: 0 };
 
 		this.port = ns.pid;
 	}
@@ -157,7 +245,7 @@ class Info {
 		this.times.weaken2 = this.wTime;
 		this.times.hack = this.wTime / 4;
 		this.times.grow = this.wTime * 0.8;
-		this.depth = (this.wTime / this.spacer) * 4;
+		//this.depth = (this.wTime / this.spacer) * 4;
 
 		const hPercent = ns.hackAnalyze(server);
 		const amount = maxMoney * sPercent;
@@ -165,13 +253,8 @@ class Info {
 			1,
 			Math.floor(ns.hackAnalyzeThreads(server, amount))
 		);
-		const tSPercent = hPercent - hThreads;
-		const gThreads = Math.ceil(
-			ns.growthAnalyze(
-				server,
-				1+ (maxMoney / (maxMoney - maxMoney * tSPercent))
-			)
-		);
+		const tsPercent = hPercent * hThreads;
+		const gThreads = Math.ceil(ns.growthAnalyze(server, maxMoney / (maxMoney - maxMoney * tsPercent)) * 1.01);
 		this.threads.weaken1 = Math.max(
 			Math.ceil((hThreads * 0.002) / 0.05),
 			1
@@ -188,24 +271,25 @@ class Info {
 
 class ServerPool {
 	#blocks = [];
-	#maxBlockRam = 0;
-	#minBlockRam = Infinity;
+	#maxBlockSize = 0;
+	#minBlockSize = Infinity;
 	#totalRam = 0;
 	#maxRam = 0;
 	#index = new Map();
 
 	/** @param {import("..").NS} ns */
 	constructor(ns, servers) {
+		this.ns = ns;
 		for (const server of servers) {
 			if (!ns.hasRootAccess(server)) continue; // next item if no root access
 			const maxRam = ns.getServerMaxRam(server);
 			const ram = maxRam - ns.getServerUsedRam(server);
-
+			//ns.tprint(`Server: ${server} has ${ram} ram`);
 			//if (ram <= 1.7) continue; // next item if not enough ram for a single script
 			const block = { server: server, ram: ram };
 			this.#blocks.push(block);
-			if (maxRam > this.#maxBlockRam) this.#maxBlockRam = maxRam;
-			if (maxRam < this.#minBlockRam) this.#minBlockRam = maxRam;
+			if (maxRam > this.#maxBlockSize) this.#maxBlockSize = maxRam;
+			if (maxRam < this.#minBlockSize) this.#minBlockSize = maxRam;
 			this.#totalRam += ram;
 			this.#maxRam += maxRam;
 		}
@@ -234,12 +318,12 @@ class ServerPool {
 		return this.#totalRam;
 	}
 
-	get minBlockRam() {
-		return this.#minBlockRam;
+	get minBlockSize() {
+		return this.#minBlockSize;
 	}
 
-	get maxBlockRam() {
-		return this.#maxBlockRam;
+	get maxBlockSize() {
+		return this.#maxBlockSize;
 	}
 
 	assign(job) {
@@ -249,8 +333,7 @@ class ServerPool {
 			block.ram -= job.cost;
 			this.#totalRam -= job.cost;
 			return true;
-		}
-		return false;
+		} else return false;
 	}
 
 	finish(job) {
@@ -264,14 +347,32 @@ class ServerPool {
 	}
 
 	printBlocks(ns) {
-		this.#blocks.forEach((block) => ns.print(block));
+		this.#blocks.forEach((block) => ns.tprint(block));
+	}
+
+	testThreads(threadCosts) {
+		const cPool = this.cloneBlocks();
+		let batches = 0;
+		let found = true;
+		while (found) {
+			for (const cost of threadCosts) {
+				found = false;
+				const block = cPool.find(block => block.ram >= cost);
+				if (block) {
+					block.ram -= cost;
+					found = true;
+				} else break;
+			}
+			if (found) batches++; 
+		}
+		return batches;
 	}
 }
-
-export function optimizeBatch(ns, info, serverPool) {
+/** @param {import("..").NS} ns */
+function optimizeBatch(ns, info, serverPool) {
 	// brute force method start at stealing 99% down to 0.1% and take the largest that fits
 
-	const maxThreads = serverPool.maxBlockRam / 1.75;
+	const maxThreads = serverPool.maxBlockSize / 1.75;
 	const maxMoney = info.maxMoney;
 	const hPercent = ns.hackAnalyze(info.target);
 
@@ -285,14 +386,13 @@ export function optimizeBatch(ns, info, serverPool) {
 			1,
 			Math.floor(ns.hackAnalyzeThreads(info.target, amount))
 		);
-		const tSPercent = hPercent * hThreads;
+		const tsPercent = hPercent * hThreads;
 		const gThreads = Math.ceil(
 			ns.growthAnalyze(
 				info.target,
-				1+ (maxMoney / (maxMoney - maxMoney * tSPercent))
+				maxMoney / (maxMoney - maxMoney * tsPercent)
 			)
 		);
-
 		if (Math.max(hThreads, gThreads) <= maxThreads) {
 			const wThreads1 = Math.max(Math.ceil((hThreads * 0.002) / 0.05), 1);
 			const wThreads2 = Math.max(Math.ceil((gThreads * 0.004) / 0.05), 1);
@@ -330,4 +430,46 @@ export function optimizeBatch(ns, info, serverPool) {
 		sPercent -= step;
 	}
 	throw new Error("No solution found, something is wrong");
+}
+/** @param {import("..").NS} ns */
+async function optimizeShotgun(ns, info, serverPool) {
+	// Setup is mostly the same.
+	ns.writePort(info.logPort,`INFO: Optimizing batch for ${info.target}`);
+	const maxThreads = (serverPool.maxBlockSize / 1.75);
+	ns.writePort(info.logPort,`INFO: Max Threads: ${maxThreads}`)
+	const maxMoney = info.maxMoney;
+	const hPercent = ns.hackAnalyze(info.target);
+	const wTime = ns.getWeakenTime(info.target);
+
+	const minsPercent = 0.001;
+	const stepValue = 0.01;
+	let sPercent = 0.99;
+	let best = 0; 
+
+	while (sPercent > minsPercent) {
+		
+		const amount = maxMoney * sPercent;
+		const hThreads = Math.max(Math.floor(ns.hackAnalyzeThreads(info.target, amount)), 1);
+		const tsPercent = hPercent * hThreads;
+		const gThreads = Math.ceil(ns.growthAnalyze(info.target, maxMoney / (maxMoney - maxMoney * tsPercent)) * 1.01);
+		if (Math.max(hThreads, gThreads) <= maxThreads) {
+			//ns.tprint(`hThreads: ${hThreads} gThreads: ${gThreads}`);
+			const wThreads1 = Math.max(Math.ceil(hThreads * 0.002 / 0.05), 1);
+			const wThreads2 = Math.max(Math.ceil(gThreads * 0.004 / 0.05), 1);
+
+			const threadCosts = [hThreads * 1.7, wThreads1 * 1.75, gThreads * 1.75, wThreads2 * 1.75];
+			
+			const batchCount = serverPool.testThreads(threadCosts);
+			const income = tsPercent * maxMoney * batchCount / (info.spacer * 4 * batchCount + wTime);
+			if (income > best) {
+				best = income;
+				info.sPercent = tsPercent;
+				info.depth = batchCount;
+			}
+		}
+		await ns.sleep(0);
+		sPercent -= stepValue;
+	}
+	ns.writePort(info.logPort,`SUCCESS: Optimization complete, best depth: ${info.depth} `);
+	if (best === 0) throw new Error("Not enough ram to run even a single batch. Something has gone seriously wrong.");
 }

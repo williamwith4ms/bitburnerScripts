@@ -3,7 +3,7 @@ export async function main(ns) {
     ns.disableLog("ALL")
     ns.tail()
 
-    const refreshRate = 500
+    const refreshRate = 5
     const server = ns.args[0]
 
     while (true) {
